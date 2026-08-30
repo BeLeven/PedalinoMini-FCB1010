@@ -4015,7 +4015,7 @@ void get_options_page(unsigned int start, unsigned int len) {
   page += F("</div>");
   page += F("<div class='w-50'>");
   page += F("<div class='form-floating'>");
-  page += F("<input class='form-control' type='password' maxlength='32' id='passwordsoftap' name='passwordSoftAP' value='");
+  page += F("<input class='form-control' type='password' minlength='8' maxlength='63' id='passwordsoftap' name='passwordSoftAP' value='");
   page += passwordSoftAP;
   page += F("'>");
   page += F("<label for='passwordsoftap'>Password</label>");
@@ -4023,6 +4023,7 @@ void get_options_page(unsigned int start, unsigned int len) {
   page += F("</div>");
   page += F("<small class='form-text text-muted'>");
   page += F("Access Point SSID and password.<br>");
+  page += F("Password must be 8 to 63 characters, or left empty for an open (no password) network.<br>");
   page += F("Pedalino will be restarted if it is in AP mode and you change them.");
   page += F("</small>");
   page += F("</div>");
@@ -4670,8 +4671,15 @@ void get_configurations_page(unsigned int start, unsigned int len) {
   page += F("<small id='uploadHelpBlock' class='form-text text-muted'>");
   page += F("SPIFFS is not a high performance FS. It is designed to balance safety, wear levelling and performance for bare flash devices. ");
   page += F("If you want good performance from SPIFFS keep the % utilisation low. Currently used ");
-  page += (SPIFFS.usedBytes() * 100) / SPIFFS.totalBytes();
-  page += F("%.");
+  {
+    size_t _spiffs_total = SPIFFS.totalBytes();
+    if (_spiffs_total > 0) {
+      page += (SPIFFS.usedBytes() * 100) / _spiffs_total;
+    } else {
+      page += 0; // avoid divide by zero when SPIFFS is not mounted or empty
+    }
+    page += F("%.");
+  }
   page += F("</small>");
   page += F("</div>");
   page += F("</div>");

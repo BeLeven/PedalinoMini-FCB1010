@@ -352,7 +352,17 @@ void ap_mode_start()
 
   WiFi.mode(WIFI_AP);
 
-  if (WiFi.softAP(ssidSoftAP.c_str(), passwordSoftAP.c_str())) {
+  // ESP32 rejects any WPA2 passphrase shorter than 8 (or longer than 63) characters.
+  // If the stored password is invalid, softAP() would fail and the IDF would bring up
+  // its default "ESP_xxxxxx" AP instead. Fall back to an open AP so the configured SSID
+  // stays reachable rather than silently replaced by the default one.
+  const char *apPassword = passwordSoftAP.c_str();
+  if (passwordSoftAP.length() > 0 && (passwordSoftAP.length() < 8 || passwordSoftAP.length() > 63)) {
+    DPRINT("AP password length %d invalid (must be 8..63), starting open AP\n", passwordSoftAP.length());
+    apPassword = nullptr;
+  }
+
+  if (WiFi.softAP(ssidSoftAP.c_str(), apPassword)) {
     DPRINT("AP %s started with password %s\n", ssidSoftAP.c_str(), passwordSoftAP.c_str());
     // Setup the DNS server redirecting all the domains to the apIP
     //dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
