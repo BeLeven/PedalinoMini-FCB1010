@@ -6200,7 +6200,8 @@ void http_handle_post_options(AsyncWebServerRequest *request) {
     for (byte b = 0; b < BANKS; b++) {
       action *act = actions[b];
       while (act != nullptr) {
-        if (act->midiMessage == PED_ACTION_POWER_ON_OFF) {
+        // ext0 wake-up needs an RTC GPIO, which an expander port is not
+        if (act->midiMessage == PED_ACTION_POWER_ON_OFF && !IS_PIN_EXTENDER(PIN_D(controls[act->control].pedal1))) {
           rtc_gpio_pullup_en((gpio_num_t)PIN_D(controls[act->control].pedal1));
           rtc_gpio_pulldown_dis((gpio_num_t)PIN_D(controls[act->control].pedal1));
           esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_D(controls[act->control].pedal1), 0);

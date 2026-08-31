@@ -743,8 +743,8 @@ void ladder_config()
       //analogSetClockDiv(255);
       analog.setAnalogResolution(ADC_RESOLUTION);
       analog.enableEdgeSnap();
-      pinMode(PIN_D(p), OUTPUT);
-      digitalWrite(PIN_D(p), HIGH);
+      pedal_pin_mode(PIN_D(p), OUTPUT);
+      pedal_digital_write(PIN_D(p), HIGH);
 
       for (byte i = 0; i < LADDER_STEPS; i++) {
         display_progress_bar_title2("Press and hold", "Switch " + String(i+1));
@@ -1410,9 +1410,13 @@ void fire_action(action* act, byte p, byte i, byte e)
               //adc_power_off();
               adc_power_release();
               delay(200);
-              rtc_gpio_pullup_en((gpio_num_t)PIN_D(p));
-              rtc_gpio_pulldown_dis((gpio_num_t)PIN_D(p));
-              esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_D(p), 0);
+              // ext0 wake-up needs an RTC GPIO, which an expander port is not:
+              // such a pedal can power the unit off but cannot wake it back up.
+              if (!IS_PIN_EXTENDER(PIN_D(p))) {
+                rtc_gpio_pullup_en((gpio_num_t)PIN_D(p));
+                rtc_gpio_pulldown_dis((gpio_num_t)PIN_D(p));
+                esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_D(p), 0);
+              }
               esp_deep_sleep_start();
               break;
           }
@@ -2016,6 +2020,9 @@ void controller_run(bool send = true)
     return;
   }
 
+  pinExtender.refresh();    // one I2C transaction for all 16 expander ports, so that
+                            // every button below reads the same snapshot for free
+
   for (byte i = 0; i < PEDALS; i++) {
     switch (pedals[i].mode) {
 
@@ -2238,6 +2245,13 @@ void controller_setup()
   analogReadResolution(ADC_RESOLUTION_BITS);
   analogSetAttenuation(ADC_11db);
 
+  // Resets every expander port to a pulled-up input before the pedals below
+  // claim the ones they need. Only matters if a pinD[]/pinA[] entry is a MCP_GPxx.
+  if (pin_extender_used()) {
+    if (pinExtender.begin()) DPRINT("MCP23017 found at %#04x\n", PIN_EXTENDER_ADDRESS);
+    else                     DPRINT("MCP23017 NOT FOUND at %#04x\n", PIN_EXTENDER_ADDRESS);
+  }
+
   DPRINT("Bank %2d\n", currentBank);
 
   // Build new MIDI controllers setup
@@ -2331,7 +2345,7 @@ void controller_setup()
       case PED_MOMENTARY1:
       case PED_LATCH1:
 
-        pedals[i].buttonConfig = new ButtonConfig;
+        pedals[i].buttonConfig = new PedalButtonConfig;
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureClick,       (pedals[i].pressMode & PED_PRESS_1) == PED_PRESS_1);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureDoubleClick, (pedals[i].pressMode & PED_PRESS_2) == PED_PRESS_2);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureLongPress,   (pedals[i].pressMode & PED_PRESS_L) == PED_PRESS_L);
@@ -2347,15 +2361,15 @@ void controller_setup()
         pedals[i].buttonConfig->setRepeatPressDelay(repeatPressTime);
         pedals[i].buttonConfig->setRepeatPressInterval(repeatPressTime);
         pedals[i].button[0] = new AceButton(pedals[i].buttonConfig, PIN_D(i), pedals[i].invertPolarity ? LOW : HIGH, (i + 1) * 10 + 1);
-        pinMode(PIN_D(i), INPUT_PULLUP);
+        pedal_pin_mode(PIN_D(i), INPUT_PULLUP);
         pedals[i].button[0]->setEventHandler(controller_event_handler_button);
-        DPRINT("   Pin D%d", PIN_D(i));
+        DPRINT("   Pin D%s", pin_label(PIN_D(i)));
         break;
 
       case PED_MOMENTARY2:
       case PED_LATCH2:
 
-        pedals[i].buttonConfig = new ButtonConfig;
+        pedals[i].buttonConfig = new PedalButtonConfig;
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureClick,       (pedals[i].pressMode & PED_PRESS_1) == PED_PRESS_1);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureDoubleClick, (pedals[i].pressMode & PED_PRESS_2) == PED_PRESS_2);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureLongPress,   (pedals[i].pressMode & PED_PRESS_L) == PED_PRESS_L);
@@ -2371,17 +2385,17 @@ void controller_setup()
         pedals[i].buttonConfig->setRepeatPressDelay(repeatPressTime);
         pedals[i].buttonConfig->setRepeatPressInterval(repeatPressTime);
         pedals[i].button[0] = new AceButton(pedals[i].buttonConfig, PIN_D(i), pedals[i].invertPolarity ? LOW : HIGH, (i + 1) * 10 + 1);
-        pinMode(PIN_D(i), INPUT_PULLUP);
+        pedal_pin_mode(PIN_D(i), INPUT_PULLUP);
         pedals[i].button[0]->setEventHandler(controller_event_handler_button);
         pedals[i].button[1] = new AceButton(pedals[i].buttonConfig, PIN_A(i), pedals[i].invertPolarity ? LOW : HIGH, (i + 1) * 10 + 2);
-        pinMode(PIN_A(i), INPUT_PULLUP);
+        pedal_pin_mode(PIN_A(i), INPUT_PULLUP);
         pedals[i].button[1]->setEventHandler(controller_event_handler_button);
-        DPRINT("   Pin A%d D%d", PIN_A(i), PIN_D(i));
+        DPRINT("   Pin A%s D%s", pin_label(PIN_A(i)), pin_label(PIN_D(i)));
         break;
 
       case PED_MOMENTARY3:
 
-        pedals[i].buttonConfig = new Encoded4To2ButtonConfig(PIN_D(i), PIN_A(i), pedals[i].invertPolarity ? LOW : HIGH);
+        pedals[i].buttonConfig = new PedalEncoded4To2ButtonConfig(PIN_D(i), PIN_A(i), pedals[i].invertPolarity ? LOW : HIGH);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureClick,       (pedals[i].pressMode & PED_PRESS_1) == PED_PRESS_1);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureDoubleClick, (pedals[i].pressMode & PED_PRESS_2) == PED_PRESS_2);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureLongPress,   (pedals[i].pressMode & PED_PRESS_L) == PED_PRESS_L);
@@ -2399,15 +2413,15 @@ void controller_setup()
         pedals[i].button[0] = new AceButton(pedals[i].buttonConfig, 1, pedals[i].invertPolarity ? LOW : HIGH, (i + 1) * 10 + 1);
         pedals[i].button[1] = new AceButton(pedals[i].buttonConfig, 2, pedals[i].invertPolarity ? LOW : HIGH, (i + 1) * 10 + 2);
         pedals[i].button[2] = new AceButton(pedals[i].buttonConfig, 3, pedals[i].invertPolarity ? LOW : HIGH, (i + 1) * 10 + 3);
-        pinMode(PIN_D(i), INPUT_PULLUP);
-        pinMode(PIN_A(i), INPUT_PULLUP);
-        DPRINT("   Pin A%d D%d", PIN_A(i), PIN_D(i));
+        pedal_pin_mode(PIN_D(i), INPUT_PULLUP);
+        pedal_pin_mode(PIN_A(i), INPUT_PULLUP);
+        DPRINT("   Pin A%s D%s", pin_label(PIN_A(i)), pin_label(PIN_D(i)));
         pedals[i].buttonConfig->setEventHandler(controller_event_handler_button);
         break;
 
       case PED_ANALOG:
-        pinMode(PIN_D(i), OUTPUT);
-        digitalWrite(PIN_D(i), HIGH);
+        pedal_pin_mode(PIN_D(i), OUTPUT);
+        pedal_digital_write(PIN_D(i), HIGH);
         pedals[i].analogPedal[0] = new ResponsiveAnalogRead(PIN_A(i), true);
         pedals[i].analogPedal[0]->setAnalogResolution(ADC_RESOLUTION);
         pedals[i].analogPedal[0]->enableEdgeSnap();
@@ -2419,7 +2433,7 @@ void controller_setup()
           lastSlot = SLOTS;
           strlcpy(lastPedalName, banks[currentBank][i].pedalName, MAXACTIONNAME+1);
         }
-        DPRINT("   Pin A%d D%d", PIN_A(i), PIN_D(i));
+        DPRINT("   Pin A%s D%s", pin_label(PIN_A(i)), pin_label(PIN_D(i)));
         break;
 
       case PED_ANALOG4:
@@ -2498,10 +2512,10 @@ void controller_setup()
         pedals[i].buttonConfig->setLongPressDelay(longPressTime);
         pedals[i].buttonConfig->setRepeatPressDelay(repeatPressTime);
         pedals[i].buttonConfig->setRepeatPressInterval(repeatPressTime);
-        pinMode(PIN_D(i), OUTPUT);
-        digitalWrite(PIN_D(i), HIGH);
-        pinMode(PIN_A(i), INPUT_PULLUP);
-        DPRINT("   Pin A%d D%d", PIN_A(i), PIN_D(i));
+        pedal_pin_mode(PIN_D(i), OUTPUT);
+        pedal_digital_write(PIN_D(i), HIGH);
+        pedal_pin_mode(PIN_A(i), INPUT_PULLUP);
+        DPRINT("   Pin A%s D%s", pin_label(PIN_A(i)), pin_label(PIN_D(i)));
         pedals[i].buttonConfig->setEventHandler(controller_event_handler_button);
         break;
 
@@ -2537,7 +2551,7 @@ void controller_setup()
           lastSlot = SLOTS;
           strlcpy(lastPedalName, banks[currentBank][i].pedalName, MAXACTIONNAME+1);
         }
-        pedals[i].buttonConfig = new ButtonConfig;
+        pedals[i].buttonConfig = new PedalButtonConfig;
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureClick,       (pedals[i].pressMode & PED_PRESS_1) == PED_PRESS_1);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureDoubleClick, (pedals[i].pressMode & PED_PRESS_2) == PED_PRESS_2);
         set_or_clear(pedals[i].buttonConfig, ButtonConfig::kFeatureLongPress,   (pedals[i].pressMode & PED_PRESS_L) == PED_PRESS_L);
@@ -2553,9 +2567,9 @@ void controller_setup()
         pedals[i].buttonConfig->setRepeatPressDelay(repeatPressTime);
         pedals[i].buttonConfig->setRepeatPressInterval(repeatPressTime);
         pedals[i].button[0] = new AceButton(pedals[i].buttonConfig, PIN_D(i), pedals[i].invertPolarity ? LOW : HIGH, (i + 1) * 10 + 1);
-        pinMode(PIN_D(i), INPUT_PULLUP);
+        pedal_pin_mode(PIN_D(i), INPUT_PULLUP);
         pedals[i].button[0]->setEventHandler(controller_event_handler_button);
-        DPRINT("   Pin A%d D%d", PIN_A(i), PIN_D(i));
+        DPRINT("   Pin A%s D%s", pin_label(PIN_A(i)), pin_label(PIN_D(i)));
         break;
     }
     pedals[i].pedalValue[0] = pedals[i].invertPolarity ? LOW : HIGH;

@@ -20,9 +20,9 @@ __________           .___      .__  .__                 _____  .__       .__    
 #define MODEL           "PedalinoMini™"
 
 #define INTERFACES        6
-#define PROFILES          3
+#define PROFILES          1
 #define BANKS            21   // 20 banks + 1 bank for global actions
-#define PEDALS            6   // real number of pedals is board specific (see below)
+#define PEDALS           12   // real number of pedals is board specific (see below)
 #define CONTROLS        100
 #define SEQUENCES        20
 #define STEPS            10   // number of steps for each sequence
@@ -44,6 +44,31 @@ __________           .___      .__  .__                 _____  .__       .__    
 // GPIOs 34 to 39 are GPIs – input only pins.
 // These pins don’t have internal pull-ups or pull-down resistors.
 // https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/peripherals/gpio.html
+
+// A pinD[]/pinA[] entry below is either a native GPIO number or a port of the MCP23017
+// I/O expander, written as MCP_GPA0..MCP_GPB7 (or MCP(0)..MCP(15)). No GPIO number
+// reaches 0x80 on any supported chip, so that bit is free to tell them apart.
+#define PIN_EXTENDER_FLAG       0x80
+#define MCP(port)               (PIN_EXTENDER_FLAG | ((port) & 0x0F))
+#define IS_PIN_EXTENDER(pin)    (((pin) & PIN_EXTENDER_FLAG) == PIN_EXTENDER_FLAG)
+#define PIN_EXTENDER_PORT(pin)  ((pin) & 0x0F)
+
+#define MCP_GPA0  MCP(0)
+#define MCP_GPA1  MCP(1)
+#define MCP_GPA2  MCP(2)
+#define MCP_GPA3  MCP(3)
+#define MCP_GPA4  MCP(4)
+#define MCP_GPA5  MCP(5)
+#define MCP_GPA6  MCP(6)
+#define MCP_GPA7  MCP(7)
+#define MCP_GPB0  MCP(8)
+#define MCP_GPB1  MCP(9)
+#define MCP_GPB2  MCP(10)
+#define MCP_GPB3  MCP(11)
+#define MCP_GPB4  MCP(12)
+#define MCP_GPB5  MCP(13)
+#define MCP_GPB6  MCP(14)
+#define MCP_GPB7  MCP(15)
 
 #ifdef HELTEC_WIFI_KIT_32
 #undef  PEDALS
@@ -119,8 +144,13 @@ const byte pinA[] = {GPIO_NUM_4,  GPIO_NUM_5,  GPIO_NUM_6,  GPIO_NUM_7,  GPIO_NU
 //const byte pinD[] = {GPIO_NUM_11, GPIO_NUM_12, GPIO_NUM_13, GPIO_NUM_16, GPIO_NUM_17, GPIO_NUM_18, GPIO_NUM_14, GPIO_NUM_0};
 //const byte pinA[] = {GPIO_NUM_44, GPIO_NUM_43, GPIO_NUM_21, GPIO_NUM_10, GPIO_NUM_2,  GPIO_NUM_1,  GPIO_NUM_14, GPIO_NUM_0};
 // Analog pedals are not supported on pedal 1 and 2 because there are only 4 available GPIOs on ADC1
-const byte pinD[] = {GPIO_NUM_11, GPIO_NUM_12, GPIO_NUM_13, GPIO_NUM_16, GPIO_NUM_17, GPIO_NUM_18, GPIO_NUM_14, GPIO_NUM_0};
+// A digital pedal can also sit on the MCP23017 I/O expander: write MCP_GPA0..MCP_GPB7 (or MCP(0)..MCP(15))
+// instead of a GPIO_NUM_x. See PIN_EXTENDER_* below and src/PinExtender.h.
+const byte pinD[] = {MCP_GPA4, MCP_GPA5, GPIO_NUM_13, GPIO_NUM_16, GPIO_NUM_17, GPIO_NUM_18, GPIO_NUM_14, GPIO_NUM_0};
 const byte pinA[] = {GPIO_NUM_44, GPIO_NUM_43, GPIO_NUM_10, GPIO_NUM_3,  GPIO_NUM_2,  GPIO_NUM_1,  GPIO_NUM_14, GPIO_NUM_0};
+#define PIN_EXTENDER_ADDRESS  0x20          // MCP23017 with A2/A1/A0 tied to GND
+#define PIN_EXTENDER_SDA_PIN  GPIO_NUM_11
+#define PIN_EXTENDER_SCL_PIN  GPIO_NUM_12
 #define FACTORY_DEFAULT_PIN   GPIO_NUM_0    // Button BOOT
 #define DIN_MIDI_IN_PIN       GPIO_NUM_1
 #define DIN_MIDI_OUT_PIN      GPIO_NUM_1
@@ -158,6 +188,8 @@ typedef uint8_t   byte;
 #include <Adafruit_ADS1X15.h>           // https://github.com/adafruit/Adafruit_ADS1X15
 //#include "AnalogPad.h"
 using namespace ace_button;
+
+#include "PinExtender.h"                // MCP23017 behind the MCP_GPxx entries of pinD[]/pinA[]
 
 #define DEBOUNCE_INTERVAL        5
 #define PED_PRESS_TIME         200

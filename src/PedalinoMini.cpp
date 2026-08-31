@@ -209,6 +209,7 @@ void setup()
   // Reset the pin used for power off
   // If the specified GPIO is a valid RTC GPIO, init as digital GPIO
   for (byte p = 0; p < PEDALS; p++) {
+    if (IS_PIN_EXTENDER(PIN_D(p))) continue;
     if (rtc_gpio_is_valid_gpio((gpio_num_t)PIN_D(p))) rtc_gpio_deinit((gpio_num_t)PIN_D(p));
   }
 
